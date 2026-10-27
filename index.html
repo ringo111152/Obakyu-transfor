@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>尾羽急電鉄 乗り換え案内 (Obakyu Transfer Guide)</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Lucide Icons -->
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+JP:wght@400;500;700&display=swap');
+        body {
+            font-family: 'Noto Sans JP', 'Inter', sans-serif;
+        }
+        /* Custom scrollbars */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(0,0,0,0.05);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(0,0,0,0.2);
+            border-radius: 3px;
+        }
+        .line-badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.15rem 0.5rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: white;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body class="bg-slate-50 text-slate-800 dark:bg-slate-900 dark:text-slate-100 min-h-screen transition-colors duration-200">
+
+    <!-- Header -->
+    <header class="sticky top-0 z-30 bg-white/90 dark:bg-slate-800/90 backdrop-blur border-b border-slate-200 dark:border-slate-700 shadow-sm">
+        <div class="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="w-10 h-10 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold text-xl shadow-md tracking-tighter">
+                    OB
+                </div>
+                <div>
+                    <h1 class="text-lg font-bold leading-tight">尾羽急電鉄 乗り換え案内</h1>
+                    <p class="text-xs text-slate-500 dark:text-slate-400">Obakyu Network Route Finder</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <button id="networkMapBtn" class="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 dark:border-slate-600 hover:bg-slate-100 dark:hover:bg-slate-700 transition flex items-center gap-1.5">
+                    <i data-lucide="map" class="w-4 h-4"></i> 路線一覧 / 全駅
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="max-w-5xl mx-auto px-4 py-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
+
+        <!-- Search Panel (Left/Top) -->
+        <section class="lg:col-span-5 bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 p-5 h-fit">
+            <h2 class="text-base font-bold mb-4 flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                <i data-lucide="search" class="w-5 h-5 text-blue-600 dark:text-blue-400"></i>
+                経路検索
+            </h2>
+
+            <form id="searchForm" onsubmit="event.preventDefault(); executeSearch();" class="space-y-4">
+                <!-- Departure Station -->
+                <div class="relative">
+                    <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1">出発駅</label>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-emerald-500">
+                            <i data-lucide="circle-dot" class="w-5 h-5"></i>
+                        </span>
+                        <input type="text" id="startStation" placeholder="例: 尾羽原, 井口, 金田..." required
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition text-sm">
+                    </div>
+                    <div id="startSuggest" class="hidden absolute z-20 left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-48 overflow-y-auto"></div>
+                </div>
+
+                <!-- Via Stations (Dynamic Container) -->
+                <div id="viaContainer" class="space-y-3"></div>
+
+                <!-- Add Via Button -->
+                <button type="button" id="addViaBtn" class="text-xs text-blue-600 dark:text-blue-400 font-semibold hover:underline flex items-center gap-1 py-1">
+                    <i data-lucide="plus-circle" class="w-4 h-4"></i> 経由駅を追加
+                </button>
+
+                <!-- Swap Button & Destination -->
+                <div class="relative">
+                    <div class="flex items-center justify-between mb-1">
+                        <label class="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider">到着駅</label>
+                        <button type="button" id="swapBtn" class="text-xs text-slate-500 hover:text-blue-600 dark:hover:text-blue-400 flex items-center gap-1">
+                            <i data-lucide="arrow-up-down" class="w-3.5 h-3.5"></i> 出発・到着を入れ替え
+                        </button>
+                    </div>
+                    <div class="relative">
+                        <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-rose-500">
+                            <i data-lucide="map-pin" class="w-5 h-5"></i>
+                        </span>
+                        <input type="text" id="endStation" placeholder="例: 高徳空港, 本郷, 千鳥..." required
+                            class="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:focus:ring-blue-400 transition text-sm">
+                    </div>
+                    <div id="endSuggest" class="hidden absolute z-20 left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-48 overflow-y-auto"></div>
+                </div>
+
+                <!-- Submit Button -->
+                <button type="submit" class="w-full mt-2 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white font-bold py-3 rounded-xl shadow-md transition flex items-center justify-center gap-2">
+                    <i data-lucide="navigation" class="w-5 h-5"></i>
+                    ルートを検索
+                </button>
+            </form>
+
+            <!-- Quick Selection Badges -->
+            <div class="mt-6 pt-4 border-t border-slate-100 dark:border-slate-700/60">
+                <span class="text-xs text-slate-400 dark:text-slate-500 font-medium block mb-2">よく使われる主要駅:</span>
+                <div class="flex flex-wrap gap-1.5" id="quickStations"></div>
+            </div>
+        </section>
+
+        <!-- Results Panel (Right/Bottom) -->
+        <section class="lg:col-span-7 space-y-4">
+            <!-- Initial Empty State -->
+            <div id="emptyState" class="bg-white dark:bg-slate-800 rounded-2xl p-10 text-center border border-slate-200 dark:border-slate-700">
+                <div class="w-16 h-16 bg-blue-50 dark:bg-slate-700 text-blue-600 dark:text-blue-400 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <i data-lucide="train" class="w-8 h-8"></i>
+                </div>
+                <h3 class="text-base font-bold text-slate-700 dark:text-slate-200 mb-1">出発駅と到着駅を入力してください</h3>
+                <p class="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">経由駅数が最も少ないおすすめ最短ルートと乗り換え駅をご案内します。</p>
+            </div>
+
+            <!-- Route Cards Tabs Header -->
+            <div id="routeResultsHeader" class="hidden">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="text-sm font-bold text-slate-600 dark:text-slate-400 flex items-center gap-2">
+                        <i data-lucide="list" class="w-4 h-4"></i> 検索結果一覧
+                    </h3>
+                    <span id="resultCount" class="text-xs text-slate-400"></span>
+                </div>
+                <div id="routeTabs" class="flex gap-2 overflow-x-auto pb-2"></div>
+            </div>
+
+            <!-- Detailed Route Content Container -->
+            <div id="routeDetailContainer" class="space-y-4"></div>
+        </section>
+
+    </main>
+
+    <!-- Modal for All Stations & Network Map -->
+    <div id="networkModal" class="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-sm hidden flex items-center justify-center p-4">
+        <div class="bg-white dark:bg-slate-800 rounded-2xl shadow-xl w-full max-w-3xl max-h-[85vh] flex flex-col border border-slate-200 dark:border-slate-700">
+            <div class="p-4 border-b border-slate-200 dark:border-slate-700 flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                    <i data-lucide="map" class="w-5 h-5 text-blue-600"></i>
+                    <h3 class="font-bold text-slate-800 dark:text-slate-100">尾羽急電鉄 路線・全駅一覧</h3>
+                </div>
+                <button id="closeModalBtn" class="p-1 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-500">
+                    <i data-lucide="x" class="w-5 h-5"></i>
+                </button>
+            </div>
+            <div class="p-5 overflow-y-auto space-y-6" id="networkModalBody">
+                <!-- Dynamic Content Insertion -->
+            </div>
+        </div>
+    </div>
+
+    <!-- JavaScript Network Data & Routing Engine -->
+    <script>
+        // --- 路線・駅データ定義 ---
+        const LINES = {
+            "OB": { name: "尾羽急本線", color: "#2563eb", textColor: "#ffffff", code: "OB" },
+            "IT": { name: "井問線", color: "#64748b", textColor: "#ffffff", code: "IT" },
+            "CB": { name: "千鳥支線", color: "#4f46e5", textColor: "#ffffff", code: "CB" },
+            "AP": { name: "空港線", color: "#f97316", textColor: "#ffffff", code: "AP" },
+            "OK": { name: "金田線", color: "#eab308", textColor: "#1e293b", code: "OK" },
+            "HS": { name: "尾羽急高速線・尾羽支線", color: "#0284c7", textColor: "#ffffff", code: "HS" },
+            "JT": { name: "飛金線・飛岡支線", color: "#06b6d4", textColor: "#ffffff", code: "JT" }
+        };
+
+        // 路線ごとの駅シーケンス（接続情報）
+        const LINE_STATIONS = [
+            // 尾羽急本線 (OB)
+            { line: "OB", stations: ["尾羽原", "井口", "梅郷", "雲中", "安越", "十川真砂橋", "千峰", "南雲谷", "雲谷", "長峰", "西高徳", "高徳", "明神前", "舞子台", "紀田", "瀬舞", "余美", "千鳥"] },
+
+            // 井問線 (IT)
+            { line: "IT", stations: ["井口", "上井口", "参田町", "東本郷", "本郷", "西問屋町", "問屋町", "千鳥"] },
+
+            // 千鳥支線 (CB)
+            { line: "CB", stations: ["千鳥", "南千鳥", "奥千鳥", "千鳥山道", "本郷神宮前", "本郷"] },
+
+            // 空港線 (AP)
+            { line: "AP", stations: ["高徳", "新高徳", "高徳整備場北", "高徳空港"] },
+
+            // 金田線 本線 (OK)
+            { line: "OK", stations: ["金田", "鵲橋", "金田市", "金田空港", "金田新都市"] },
+            // 金田線 分岐 (新箱倉金田 - 南箱倉)
+            { line: "OK", stations: ["金田", "新箱倉金田", "南箱倉"] },
+
+            // 尾羽急高速線・尾羽支線 (HS)
+            { line: "HS", stations: ["千鳥", "問屋町", "問屋蔵前", "赤堀大沢", "赤堀", "新赤堀", "塚野", "金田", "百鳥", "西百鳥", "支線尾羽", "北尾羽"] },
+            // 高速線 南箱倉分岐
+            { line: "HS", stations: ["金田", "南箱倉"] },
+
+            // 飛金線・飛岡支線 (JT)
+            { line: "JT", stations: ["尾羽原", "井口", "梅郷", "雲中", "水橋", "飛岡", "垂岡", "飛水竜田", "南竜田", "大原", "新塚", "飛水柏原", "上金田", "金田新都市"] }
+        ];
+
+        // グラフ（隣接リスト）の構築
+        // ノードキー形式: "駅名|路線ID"
+        const graph = {};
+        const stationNames = new Set();
+        const stationLinesMap = {}; // 駅名 -> 路線リスト
+
+        function addEdge(u, v, weight = 1) {
+            if (!graph[u]) graph[u] = [];
+            graph[u].push({ node: v, weight: weight });
+        }
+
+        // 1. 各路線内の隣接駅接続
+        LINE_STATIONS.forEach(route => {
+            const line = route.line;
+            const seq = route.stations;
+            for (let i = 0; i < seq.length; i++) {
+                const st = seq[i];
+                stationNames.add(st);
+
+                if (!stationLinesMap[st]) stationLinesMap[st] = new Set();
+                stationLinesMap[st].add(line);
+
+                if (i > 0) {
+                    const prevSt = seq[i - 1];
+                    const u = `${st}|${line}`;
+                    const v = `${prevSt}|${line}`;
+                    addEdge(u, v, 1);
+                    addEdge(v, u, 1);
+                }
+            }
+        });
+
+        // 2. 同一駅での路線間乗り換えエッジ構築（乗り換えコスト0.1駅分として計算）
+        Array.from(stationNames).forEach(st => {
+            const lines = Array.from(stationLinesMap[st]);
+            for (let i = 0; i < lines.length; i++) {
+                for (let j = i + 1; j < lines.length; j++) {
+                    const nodeA = `${st}|${lines[i]}`;
+                    const nodeB = `${st}|${lines[j]}`;
+                    addEdge(nodeA, nodeB, 0.1); // 同一駅乗り換え
+                    addEdge(nodeB, nodeA, 0.1);
+                }
+            }
+        });
+
+        // --- 経路探索アルゴリズム (Yen's Algorithm 簡易版 / BFS / Dijkstra) ---
+        function findRoutesBetween(startSt, endSt) {
+            if (!stationNames.has(startSt) || !stationNames.has(endSt)) return [];
+            if (startSt === endSt) return [];
+
+            const startLines = Array.from(stationLinesMap[startSt]);
+            const endLines = Array.from(stationLinesMap[endSt]);
+
+            let allPaths = [];
+
+            // すべてのスタートノードとゴールノードの組み合わせでダイクストラ/探索
+            startLines.forEach(sLine => {
+                endLines.forEach(eLine => {
+                    const startNode = `${startSt}|${sLine}`;
+                    const endNode = `${endSt}|${eLine}`;
+                    const paths = kShortestPaths(startNode, endNode, 5);
+                    allPaths.push(...paths);
+                });
+            });
+
+            // パスの重複排除・整理
+            const uniqueRoutes = [];
+            const seenKeys = new Set();
+
+            // パスを解析してフォーマット化
+            allPaths.forEach(rawPath => {
+                const parsed = parsePath(rawPath.nodes);
+                const key = parsed.steps.map(s => `${s.station}:${s.line}`).join('->');
+                if (!seenKeys.has(key)) {
+                    seenKeys.add(key);
+                    uniqueRoutes.push(parsed);
+                }
+            });
+
+            // 経由駅数（実質乗車駅数）が少ない順、乗り換え回数が少ない順でソート
+            uniqueRoutes.sort((a, b) => {
+                if (a.stationCount !== b.stationCount) return a.stationCount - b.stationCount;
+                return a.transfers - b.transfers;
+            });
+
+            return uniqueRoutes.slice(0, 5);
+        }
+
+        // K-Shortest Paths (Dijkstra + 探索変形)
+        function kShortestPaths(startNode, targetNode, k = 3) {
+            let paths = [];
+            let queue = [{ nodes: [startNode], cost: 0 }];
+
+            while (queue.length > 0 && paths.length < k) {
+                // コスト順ソート
+                queue.sort((a, b) => a.cost - b.cost);
+                let current = queue.shift();
+                let lastNode = current.nodes[current.nodes.length - 1];
+
+                if (lastNode === targetNode) {
+                    paths.push(current);
+                    continue;
+                }
+
+                if (current.nodes.length > 30) continue; // ループ防止
+
+                let neighbors = graph[lastNode] || [];
+                for (let edge of neighbors) {
+                    if (!current.nodes.includes(edge.node)) {
+                        queue.push({
+                            nodes: [...current.nodes, edge.node],
+                            cost: current.cost + edge.weight
+                        });
+                    }
+                }
+            }
+            return paths;
+        }
+
+        // 生のノード配列 `["尾羽原|OB", "井口|OB", "井口|IT", "上井口|IT"]` をステップ表示用に解析
+        function parsePath(nodes) {
+            let steps = [];
+            let transfers = 0;
+            let currentLine = null;
+
+            for (let i = 0; i < nodes.length; i++) {
+                const [st, line] = nodes[i].split('|');
+
+                if (i === 0) {
+                    currentLine = line;
+                    steps.push({ station: st, line: line, isTransfer: false, type: 'start' });
+                } else {
+                    const prevSt = steps[steps.length - 1].station;
+                    if (st === prevSt) {
+                        // 乗り換えが発生
+                        transfers++;
+                        currentLine = line;
+                        steps[steps.length - 1].transferTo = line;
+                        steps.push({ station: st, line: line, isTransfer: true, type: 'transfer' });
+                    } else {
+                        steps.push({ station: st, line: line, isTransfer: false, type: (i === nodes.length - 1) ? 'end' : 'pass' });
+                    }
+                }
+            }
+
+            // 実質的な乗車駅数の計算（重複乗り換えステップを除く）
+            const distinctStations = new Set(steps.map(s => s.station));
+            const stationCount = distinctStations.size - 1; // 区間数
+
+            // 利用路線リストの取得
+            const usedLines = Array.from(new Set(steps.map(s => s.line)));
+
+            return {
+                steps,
+                transfers,
+                stationCount,
+                usedLines,
+                totalNodes: steps.length
+            };
+        }
+
+        // 経由地対応の総合ルート検索
+        function searchRouteWithVias(startSt, viaSts, endSt) {
+            const waypoints = [startSt, ...viaSts.filter(v => v.trim() !== ""), endSt];
+            let combinedSteps = [];
+            let totalTransfers = 0;
+            let totalStationCount = 0;
+            let usedLinesSet = new Set();
+
+            for (let i = 0; i < waypoints.length - 1; i++) {
+                const from = waypoints[i];
+                const to = waypoints[i + 1];
+
+                const legRoutes = findRoutesBetween(from, to);
+                if (legRoutes.length === 0) return null; // 該当ルートなし
+
+                const bestLeg = legRoutes[0]; // Legごとの最適ルート
+                totalTransfers += bestLeg.transfers;
+                totalStationCount += bestLeg.stationCount;
+                bestLeg.usedLines.forEach(l => usedLinesSet.add(l));
+
+                if (i === 0) {
+                    combinedSteps.push(...bestLeg.steps);
+                } else {
+                    // 繋ぎ目の重複を除去して追加
+                    const firstStepNewLeg = bestLeg.steps[0];
+                    const lastStepPrevLeg = combinedSteps[combinedSteps.length - 1];
+
+                    if (lastStepPrevLeg.station === firstStepNewLeg.station && lastStepPrevLeg.line !== firstStepNewLeg.line) {
+                        totalTransfers++;
+                    }
+                    combinedSteps.push(...bestLeg.steps.slice(1));
+                }
+            }
+
+            return [{
+                steps: combinedSteps,
+                transfers: totalTransfers,
+                stationCount: totalStationCount,
+                usedLines: Array.from(usedLinesSet),
+                isViaRoute: viaSts.length > 0
+            }];
+        }
+
+        // --- UI & イベント処理 ---
+        let viaCount = 0;
+
+        document.addEventListener('DOMContentLoaded', () => {
+            lucide.createIcons();
+            initQuickStations();
+            setupAutocomplete('startStation', 'startSuggest');
+            setupAutocomplete('endStation', 'endSuggest');
+            renderNetworkModal();
+
+            // イベントリスナー
+            document.getElementById('addViaBtn').addEventListener('click', addViaInput);
+            document.getElementById('swapBtn').addEventListener('click', swapStations);
+            document.getElementById('networkMapBtn').addEventListener('click', openNetworkModal);
+            document.getElementById('closeModalBtn').addEventListener('click', closeNetworkModal);
+        });
+
+        // 主要駅クイック選択ボタン
+        const QUICK_STATIONS = ["尾羽原", "井口", "高徳", "高徳空港", "本郷", "千鳥", "金田", "金田新都市"];
+        function initQuickStations() {
+            const container = document.getElementById('quickStations');
+            QUICK_STATIONS.forEach(st => {
+                const btn = document.createElement('button');
+                btn.type = 'button';
+                btn.className = "text-xs px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-700 hover:bg-blue-50 dark:hover:bg-slate-600 hover:text-blue-600 dark:hover:text-blue-400 border border-slate-200 dark:border-slate-600 transition";
+                btn.textContent = st;
+                btn.onclick = () => {
+                    const startInput = document.getElementById('startStation');
+                    const endInput = document.getElementById('endStation');
+                    if (!startInput.value) {
+                        startInput.value = st;
+                    } else if (!endInput.value) {
+                        endInput.value = st;
+                    } else {
+                        startInput.value = st;
+                    }
+                };
+                container.appendChild(btn);
+            });
+        }
+
+        // 経由地入力欄の追加
+        function addViaInput() {
+            viaCount++;
+            const id = `via_${viaCount}`;
+            const suggestId = `viaSuggest_${viaCount}`;
+
+            const div = document.createElement('div');
+            div.className = "relative flex items-center gap-2";
+            div.id = `viaRow_${viaCount}`;
+            div.innerHTML = `
+                <div class="relative flex-1">
+                    <span class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-amber-500">
+                        <i data-lucide="waypoint" class="w-4 h-4"></i>
+                    </span>
+                    <input type="text" id="${id}" placeholder="経由駅 ${viaCount}"
+                        class="w-full pl-9 pr-4 py-2 rounded-xl border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-700/50 focus:outline-none focus:ring-2 focus:ring-blue-500 transition text-sm">
+                    <div id="${suggestId}" class="hidden absolute z-20 left-0 right-0 top-full mt-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl shadow-lg max-h-48 overflow-y-auto"></div>
+                </div>
+                <button type="button" onclick="removeViaInput(${viaCount})" class="p-2 text-slate-400 hover:text-rose-500 transition">
+                    <i data-lucide="x-circle" class="w-5 h-5"></i>
+                </button>
+            `;
+
+            document.getElementById('viaContainer').appendChild(div);
+            lucide.createIcons();
+            setupAutocomplete(id, suggestId);
+        }
+
+        function removeViaInput(idNum) {
+            const row = document.getElementById(`viaRow_${idNum}`);
+            if (row) row.remove();
+        }
+
+        // 出発・到着の入れ替え
+        function swapStations() {
+            const startInput = document.getElementById('startStation');
+            const endInput = document.getElementById('endStation');
+            const temp = startInput.value;
+            startInput.value = endInput.value;
+            endInput.value = temp;
+        }
+
+        // オートコンプリート (サジェスト)
+        function setupAutocomplete(inputId, suggestId) {
+            const input = document.getElementById(inputId);
+            const suggestBox = document.getElementById(suggestId);
+
+            input.addEventListener('input', () => {
+                const val = input.value.trim();
+                if (!val) {
+                    suggestBox.classList.add('hidden');
+                    return;
+                }
+
+                const matches = Array.from(stationNames).filter(st => st.includes(val));
+                if (matches.length === 0) {
+                    suggestBox.classList.add('hidden');
+                    return;
+                }
+
+                suggestBox.innerHTML = '';
+                matches.forEach(st => {
+                    const item = document.createElement('div');
+                    item.className = "px-4 py-2 hover:bg-slate-100 dark:hover:bg-slate-700 cursor-pointer text-sm flex items-center justify-between";
+
+                    const linesBadges = Array.from(stationLinesMap[st]).map(l =>
+                        `<span class="line-badge" style="background-color:${LINES[l].color}; color:${LINES[l].textColor};">${LINES[l].name}</span>`
+                    ).join(' ');
+
+                    item.innerHTML = `<span class="font-medium">${st}</span><div class="flex gap-1">${linesBadges}</div>`;
+                    item.onmousedown = (e) => {
+                        e.preventDefault();
+                        input.value = st;
+                        suggestBox.classList.add('hidden');
+                    };
+                    suggestBox.appendChild(item);
+                });
+                suggestBox.classList.remove('hidden');
+            });
+
+            input.addEventListener('blur', () => {
+                setTimeout(() => suggestBox.classList.add('hidden'), 200);
+            });
+        }
+
+        // --- ルート検索の実行 ---
+        function executeSearch() {
+            const startSt = document.getElementById('startStation').value.trim();
+            const endSt = document.getElementById('endStation').value.trim();
+
+            // 経由駅収集
+            const viaInputs = document.querySelectorAll('#viaContainer input');
+            const viaSts = Array.from(viaInputs).map(i => i.value.trim()).filter(v => v !== "");
+
+            if (!stationNames.has(startSt)) {
+                alert(`出発駅「${startSt}」が見つかりません。`);
+                return;
+            }
+            if (!stationNames.has(endSt)) {
+                alert(`到着駅「${endSt}」が見つかりません。`);
+                return;
+            }
+
+            let routes = [];
+            if (viaSts.length > 0) {
+                // 経由地ありの検索
+                routes = searchRouteWithVias(startSt, viaSts, endSt);
+            } else {
+                // 通常検索（複数候補取得）
+                routes = findRoutesBetween(startSt, endSt);
+            }
+
+            renderResults(routes);
+        }
+
+        // --- 検索結果の描画 ---
+        function renderResults(routes) {
+            const emptyState = document.getElementById('emptyState');
+            const header = document.getElementById('routeResultsHeader');
+            const tabsContainer = document.getElementById('routeTabs');
+            const container = document.getElementById('routeDetailContainer');
+            const resultCount = document.getElementById('resultCount');
+
+            container.innerHTML = '';
+            tabsContainer.innerHTML = '';
+
+            if (!routes || routes.length === 0) {
+                emptyState.classList.remove('hidden');
+                header.classList.add('hidden');
+                emptyState.querySelector('h3').textContent = "ルートが見つかりませんでした";
+                emptyState.querySelector('p').textContent = "駅名をお確かめの上、再度お試しください。";
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            header.classList.remove('hidden');
+            resultCount.textContent = `全 ${routes.length} 候補`;
+
+            // タブと詳細ビューの生成
+            routes.forEach((route, index) => {
+                const isBest = index === 0;
+
+                // タブボタン
+                const tabBtn = document.createElement('button');
+                tabBtn.className = `px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 ${
+                    isBest
+                    ? 'bg-blue-600 text-white shadow-sm'
+                    : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100'
+                }`;
+                tabBtn.innerHTML = `
+                    ${isBest ? '<span class="bg-amber-400 text-slate-900 text-[10px] px-1.5 py-0.5 rounded-full font-extrabold">最少</span>' : `ルート ${index + 1}`}
+                    <span>経由: ${route.stationCount}駅</span>
+                `;
+                tabBtn.onclick = () => selectRouteTab(index);
+                tabsContainer.appendChild(tabBtn);
+
+                // ルート詳細カード
+                const detailCard = document.createElement('div');
+                detailCard.id = `routeCard_${index}`;
+                detailCard.className = `bg-white dark:bg-slate-800 rounded-2xl p-5 border border-slate-200 dark:border-slate-700 shadow-sm space-y-4 ${index === 0 ? '' : 'hidden'}`;
+
+                // サマリーヘッダー
+                const lineBadgesHtml = route.usedLines.map(l =>
+                    `<span class="line-badge" style="background-color:${LINES[l].color}; color:${LINES[l].textColor};">${LINES[l].name}</span>`
+                ).join(' ');
+
+                detailCard.innerHTML = `
+                    <div class="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-700">
+                        <div class="flex items-center gap-2">
+                            ${isBest ? '<span class="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 text-xs font-bold rounded-md">おすすめ最短</span>' : ''}
+                            <h4 class="font-bold text-slate-800 dark:text-slate-100">ルート ${index + 1}</h4>
+                        </div>
+                        <div class="text-right">
+                            <span class="text-xl font-extrabold text-blue-600 dark:text-blue-400">${route.stationCount}</span>
+                            <span class="text-xs text-slate-500">駅間 (乗換 ${route.transfers}回)</span>
+                        </div>
+                    </div>
+
+                    <!-- 利用路線一覧 -->
+                    <div class="flex items-center gap-1.5 flex-wrap">
+                        <span class="text-xs text-slate-400 font-medium">利用路線:</span>
+                        ${lineBadgesHtml}
+                    </div>
+
+                    <!-- ステップバイステップ 経路表示 -->
+                    <div class="relative pl-6 space-y-0 mt-4 before:absolute before:left-3.5 before:top-3 before:bottom-3 before:w-1 before:bg-slate-200 dark:before:bg-slate-700">
+                        ${renderRouteSteps(route.steps)}
+                    </div>
+                `;
+
+                container.appendChild(detailCard);
+            });
+        }
+
+        // タブ切り替え処理
+        function selectRouteTab(selectedIndex) {
+            const tabs = document.querySelectorAll('#routeTabs button');
+            tabs.forEach((tab, i) => {
+                if (i === selectedIndex) {
+                    tab.className = 'px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 bg-blue-600 text-white shadow-sm';
+                } else {
+                    tab.className = 'px-3.5 py-2 rounded-xl text-xs font-bold transition flex items-center gap-1.5 shrink-0 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100';
+                }
+            });
+
+            const cards = document.querySelectorAll('#routeDetailContainer > div');
+            cards.forEach((card, i) => {
+                if (i === selectedIndex) {
+                    card.classList.remove('hidden');
+                } else {
+                    card.classList.add('hidden');
+                }
+            });
+        }
+
+        // ステップ詳細のレンダリング
+        function renderRouteSteps(steps) {
+            let html = '';
+
+            for (let i = 0; i < steps.length; i++) {
+                const step = steps[i];
+                const lineInfo = LINES[step.line];
+                const isStart = i === 0;
+                const isEnd = i === steps.length - 1;
+
+                if (step.isTransfer) {
+                    // 乗り換え表示ステップ
+                    html += `
+                        <div class="relative py-3 flex items-center gap-3 my-1">
+                            <div class="absolute -left-6 w-7 h-7 bg-amber-500 text-white rounded-full flex items-center justify-center shadow-md z-10 text-xs">
+                                <i data-lucide="repeat" class="w-4 h-4"></i>
+                            </div>
+                            <div class="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl px-3.5 py-2 w-full flex items-center justify-between">
+                                <span class="text-xs font-bold text-amber-800 dark:text-amber-300">
+                                    【乗換】${step.station}駅で ${lineInfo.name} へ乗り換え
+                                </span>
+                                <span class="line-badge" style="background-color:${lineInfo.color}; color:${lineInfo.textColor};">${lineInfo.name}</span>
+                            </div>
+                        </div>
+                    `;
+                } else {
+                    // 通常の駅ステップ
+                    const iconBg = isStart ? 'bg-emerald-500' : (isEnd ? 'bg-rose-500' : 'bg-slate-300 dark:bg-slate-600');
+                    const iconName = isStart ? 'circle-dot' : (isEnd ? 'map-pin' : 'circle');
+
+                    html += `
+                        <div class="relative py-2 flex items-center justify-between group">
+                            <!-- ノードマーカー -->
+                            <div class="absolute -left-6 w-7 h-7 ${iconBg} text-white rounded-full flex items-center justify-center z-10 shadow-sm border-2 border-white dark:border-slate-800">
+                                <i data-lucide="${iconName}" class="w-3.5 h-3.5"></i>
+                            </div>
+
+                            <div class="flex items-center gap-3">
+                                <span class="text-sm font-bold ${isStart || isEnd ? 'text-slate-900 dark:text-slate-100 text-base' : 'text-slate-700 dark:text-slate-300'}">
+                                    ${step.station}
+                                </span>
+                                ${isStart ? '<span class="text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 px-1.5 py-0.5 rounded">出発</span>' : ''}
+                                ${isEnd ? '<span class="text-[10px] font-bold bg-rose-100 text-rose-700 dark:bg-rose-950 dark:text-rose-300 px-1.5 py-0.5 rounded">到着</span>' : ''}
+                            </div>
+
+                            <div>
+                                <span class="line-badge opacity-80 group-hover:opacity-100 transition" style="background-color:${lineInfo.color}; color:${lineInfo.textColor};">
+                                    ${lineInfo.name}
+                                </span>
+                            </div>
+                        </div>
+                    `;
+                }
+            }
+
+            return html;
+        }
+
+        // --- 全駅モーダル表示 ---
+        function openNetworkModal() {
+            document.getElementById('networkModal').classList.remove('hidden');
+        }
+        function closeNetworkModal() {
+            document.getElementById('networkModal').classList.add('hidden');
+        }
+
+        function renderNetworkModal() {
+            const body = document.getElementById('networkModalBody');
+            body.innerHTML = '';
+
+            Object.keys(LINES).forEach(lineKey => {
+                const line = LINES[lineKey];
+                const section = document.createElement('div');
+                section.className = "space-y-2";
+
+                // この路線の全所属駅を取得（ユニーク）
+                const lineSts = new Set();
+                LINE_STATIONS.filter(r => r.line === lineKey).forEach(r => {
+                    r.stations.forEach(s => lineSts.add(s));
+                });
+
+                const stationsArray = Array.from(lineSts);
+
+                section.innerHTML = `
+                    <div class="flex items-center gap-2 pb-1 border-b border-slate-200 dark:border-slate-700">
+                        <span class="w-3 h-3 rounded-full" style="background-color:${line.color};"></span>
+                        <h4 class="font-bold text-sm text-slate-800 dark:text-slate-200">${line.name} (${line.code})</h4>
+                        <span class="text-xs text-slate-400">全${stationsArray.length}駅</span>
+                    </div>
+                    <div class="flex flex-wrap gap-1.5 pt-1">
+                        ${stationsArray.map(st => `
+                            <button onclick="selectModalStation('${st}')" class="text-xs px-2.5 py-1 rounded-md bg-slate-100 dark:bg-slate-700/60 hover:bg-blue-50 dark:hover:bg-slate-600 hover:text-blue-600 transition">
+                                ${st}
+                            </button>
+                        `).join('')}
+                    </div>
+                `;
+                body.appendChild(section);
+            });
+        }
+
+        function selectModalStation(st) {
+            closeNetworkModal();
+            const startInput = document.getElementById('startStation');
+            const endInput = document.getElementById('endStation');
+
+            if (!startInput.value) {
+                startInput.value = st;
+            } else if (!endInput.value) {
+                endInput.value = st;
+            } else {
+                startInput.value = st;
+            }
+        }
+    </script>
+</body>
+</html>
